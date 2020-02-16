@@ -1,7 +1,3 @@
-//
-// Created by octotentacle on 12/02/2020.
-//
-
 #ifndef CLIENT_CHAT_MESSAGE_H
 #define CLIENT_CHAT_MESSAGE_H
 
