@@ -5,17 +5,27 @@
 #include <boost/array.hpp>
 #include <cstring>
 
-class ChatMessage;
-
 enum class MessageType {
     kOnlineState = 0,
     kSimpleMessage,
+    kPrivateMessage,
     kUnknown = 100,
 };
+
+std::ostream& operator<<(std::ostream& os, MessageType type) {
+    switch (type) {
+        case MessageType::kOnlineState: os << "Client connection message"; break;
+        case MessageType::kSimpleMessage: os << "Simple text message"; break;
+        case MessageType::kPrivateMessage: os << "Private text message"; break;
+        default: os << "Unknown message";
+    }
+    return os;
+}
 
 class ChatMessage {
 public:
 
+    static constexpr size_t kHeaderSize = 256;
     static constexpr size_t kMessageSize = 1025;
 
     ChatMessage() : data_(), type_(MessageType::kUnknown) {
@@ -32,15 +42,15 @@ public:
         Decode();
     }
 
-    explicit ChatMessage(const std::string textMessage) : data_(), type_(MessageType::kSimpleMessage) {
+    explicit ChatMessage(const std::string& textMessage) : data_(), type_(MessageType::kSimpleMessage) {
         data_[0] = static_cast<char>(MessageType::kSimpleMessage);
         for (size_t i = 0; i < std::max(kMessageSize - 1, textMessage.size()); ++i) {
             data_[i + 1] = textMessage[i];
         }
     }
 
-    void Decode() { ///mb try catch on cast??
-        switch (static_cast<char>(data_[0])) {
+    void Decode() {
+        switch (data_[0]) {
             case 0: {
                 type_ = MessageType::kOnlineState;
                 return;
@@ -49,11 +59,25 @@ public:
                 type_ = MessageType::kSimpleMessage;
                 return;
             }
+            case 2: {
+                type_ = MessageType::kPrivateMessage;
+                return;
+            }
             default: {
                 type_ = MessageType::kUnknown;
                 return;
             }
         }
+    }
+
+    void MakePrivate() {
+        if (type_ == MessageType::kPrivateMessage) {
+            return;
+        }
+        if (type_ != MessageType::kSimpleMessage) {
+            throw;
+        }
+        type_ = MessageType::kPrivateMessage;
     }
 
     MessageType GetType() const {
@@ -64,6 +88,10 @@ public:
         return data_;
     }
 
+    boost::array<char, kMessageSize> GetRawData() const {
+        return data_;
+    }
+
     template <typename T>
     void WriteToMessage(const T& data) {
         const char* begin = reinterpret_cast<const char*>(std::addressof(data));
@@ -71,9 +99,9 @@ public:
         std::copy(begin, end, data_.begin() + 1);
     }
 
-    void WriteToMessage(const std::string& data) {
-        type_ = MessageType::kSimpleMessage;
-        data_[0] = static_cast<char>(MessageType::kSimpleMessage);
+    void WriteToMessage(const std::string& data, bool isPrivate = false) {
+        type_ = isPrivate ? MessageType::kPrivateMessage : MessageType::kSimpleMessage;
+        data_[0] = static_cast<char>(type_);
         for (size_t i = 0; i < std::max(kMessageSize - 1, data.size()); ++i) {
             data_[i + 1] = data[i];
         }
@@ -88,7 +116,7 @@ public:
     }
 
     std::string ReadText() const {
-        if (type_ != MessageType::kSimpleMessage) {
+        if (type_ != MessageType::kSimpleMessage || type_ != MessageType::kPrivateMessage) {
             throw;
         }
         std::string ret{};
