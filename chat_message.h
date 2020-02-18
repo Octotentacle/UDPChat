@@ -12,21 +12,20 @@ enum class MessageType {
     kUnknown = 100,
 };
 
-std::ostream& operator<<(std::ostream& os, MessageType type) {
+std::string to_str(MessageType type) {
     switch (type) {
-        case MessageType::kOnlineState: os << "Client connection message"; break;
-        case MessageType::kSimpleMessage: os << "Simple text message"; break;
-        case MessageType::kPrivateMessage: os << "Private text message"; break;
-        default: os << "Unknown message";
+        case MessageType::kOnlineState: return "Client connection message";
+        case MessageType::kSimpleMessage: return "Simple text message";
+        case MessageType::kPrivateMessage: return "Private text message";
+        default: return "Unknown message";
     }
-    return os;
 }
 
 class ChatMessage {
 public:
 
     static constexpr size_t kHeaderSize = 256;
-    static constexpr size_t kMessageSize = 1025;
+    static constexpr size_t kMessageSize = 1024;
 
     ChatMessage() : data_(), type_(MessageType::kUnknown) {
         data_[0] = static_cast<char>(MessageType::kUnknown);
@@ -36,16 +35,16 @@ public:
         WriteToMessage(time);
     }
 
-    explicit ChatMessage(char data[1025]) : data_() , type_(MessageType::kUnknown) {
+    explicit ChatMessage(char data[kMessageSize]) : data_() , type_(MessageType::kUnknown) {
         data_[0] = static_cast<char>(MessageType::kUnknown);
-        memcpy(data_.data(), data, sizeof(char) * 1025);
+        memcpy(data_.data(), data, sizeof(char) * kMessageSize);
         Decode();
     }
 
     explicit ChatMessage(const std::string& textMessage) : data_(), type_(MessageType::kSimpleMessage) {
         data_[0] = static_cast<char>(MessageType::kSimpleMessage);
-        for (size_t i = 0; i < std::max(kMessageSize - 1, textMessage.size()); ++i) {
-            data_[i + 1] = textMessage[i];
+        for (size_t i = 0; i < std::max(kMessageSize - kHeaderSize, textMessage.size()); ++i) {
+            data_[i + kHeaderSize] = textMessage[i];
         }
     }
 
@@ -96,14 +95,14 @@ public:
     void WriteToMessage(const T& data) {
         const char* begin = reinterpret_cast<const char*>(std::addressof(data));
         const char* end = begin + sizeof(T);
-        std::copy(begin, end, data_.begin() + 1);
+        std::copy(begin, end, data_.begin() + kHeaderSize);
     }
 
     void WriteToMessage(const std::string& data, bool isPrivate = false) {
         type_ = isPrivate ? MessageType::kPrivateMessage : MessageType::kSimpleMessage;
         data_[0] = static_cast<char>(type_);
-        for (size_t i = 0; i < std::max(kMessageSize - 1, data.size()); ++i) {
-            data_[i + 1] = data[i];
+        for (size_t i = 0; i < std::max(kMessageSize - kHeaderSize, data.size()); ++i) {
+            data_[i + kHeaderSize] = data[i];
         }
     }
 
@@ -111,16 +110,16 @@ public:
     T ReadFromMessage() const {
         T ret;
         char* begin = reinterpret_cast<char*>(std::addressof(ret));
-        std::copy(data_.begin() + 1, data_.begin() + 1 + sizeof(T), begin);
+        std::copy(data_.begin() + kHeaderSize, data_.begin() + kHeaderSize + sizeof(T), begin);
         return ret;
     }
 
     std::string ReadText() const {
-        if (type_ != MessageType::kSimpleMessage || type_ != MessageType::kPrivateMessage) {
+        if (type_ != MessageType::kSimpleMessage && type_ != MessageType::kPrivateMessage) {
             throw;
         }
         std::string ret{};
-        for (size_t i = 1; i < kMessageSize && data_[i] != 0; ++i) {
+        for (size_t i = kHeaderSize; i < kMessageSize && data_[i] != 0; ++i) {
             ret.push_back(data_[i]);
         }
         return ret;
